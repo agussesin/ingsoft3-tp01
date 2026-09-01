@@ -1,3 +1,7 @@
+using NoExiste;
+
+// Cambio controlado para demostrar la protección del pipeline.
+
 using Microsoft.EntityFrameworkCore;
 using ReservasApi.Data;
 
