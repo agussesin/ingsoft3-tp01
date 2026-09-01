@@ -1,5 +1,7 @@
 # Sistema de gestión de reservas
 
+[![CI](https://github.com/agussesin/ingsoft3-tp01/actions/workflows/ci.yml/badge.svg)](https://github.com/agussesin/ingsoft3-tp01/actions/workflows/ci.yml)
+
 Aplicación web full stack para gestionar próximas reservas. Permite crear, consultar, modificar y eliminar reservas, evitando registrar fechas pasadas.
 
 ## Tecnologías
