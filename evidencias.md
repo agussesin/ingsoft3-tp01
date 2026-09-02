@@ -67,3 +67,29 @@ La siguiente captura demuestra que el frontend, el backend y PostgreSQL funciona
 
 - `agussesin/reservas-frontend:v0.1.0`
 - `agussesin/reservas-backend:v0.1.0`
+
+## Evidencias del TP3 - Gestión del trabajo
+
+Se organizó el trabajo en un [GitHub Project](https://github.com/users/agussesin/projects/1) mediante una épica, una historia, dos tareas y un bug independiente.
+
+### Jerarquía del trabajo
+
+La épica [#6](https://github.com/agussesin/ingsoft3-tp01/issues/6) contiene la historia [#7](https://github.com/agussesin/ingsoft3-tp01/issues/7), que se descompuso en las tareas [#8](https://github.com/agussesin/ingsoft3-tp01/issues/8) y [#9](https://github.com/agussesin/ingsoft3-tp01/issues/9). El bug [#10](https://github.com/agussesin/ingsoft3-tp01/issues/10) se gestionó de forma independiente.
+
+![Jerarquía de épica, historia y tareas](evidencias/tp3-jerarquia-trabajo.png)
+
+### Sprint, límite WIP y trazabilidad
+
+El Sprint Board utiliza las columnas Todo, In Progress y Done. La columna In Progress tiene un límite WIP de 2. La tarea #8 quedó vinculada con el Pull Request [#11](https://github.com/agussesin/ingsoft3-tp01/pull/11), se cerró automáticamente y pasó a Done.
+
+![Sprint Board con límite WIP y trazabilidad](evidencias/tp3-sprint-board-wip.png)
+
+
+## Evidencias del TP4
+
+- [Reutilización del caché](evidencias/tp4-cache-reutilizado.png)
+- [Gate bloqueado por fallo del backend](evidencias/tp4-gate-bloqueado.png)
+- [Gate recuperado después de la corrección](evidencias/tp4-gate-recuperado.png)
+- [Rama desactualizada bloqueada](evidencias/tp4-rama-desactualizada.png)
+- [Rama actualizada y checks aprobados](evidencias/tp4-rama-actualizada.png)
+
