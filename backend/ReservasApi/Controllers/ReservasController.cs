@@ -1,6 +1,8 @@
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.EntityFrameworkCore;
 using ReservasApi.Data;
+using ReservasApi.Logic;
+using ReservasApi.Services;
 using ReservasApi.Models;
 
 namespace ReservasApi.Controllers;
@@ -10,10 +12,12 @@ namespace ReservasApi.Controllers;
 public class ReservasController : ControllerBase
 {
     private readonly AppDbContext _context;
+    private readonly IClock _clock;
 
-    public ReservasController(AppDbContext context)
+    public ReservasController(AppDbContext context, IClock clock)
     {
         _context = context;
+        _clock = clock;
     }
 
     [HttpGet]
@@ -41,16 +45,22 @@ public class ReservasController : ControllerBase
 
     [HttpPost]
     public async Task<ActionResult<Reserva>> Crear(Reserva reserva)
-{
-if (reserva.FechaHora <= DateTimeOffset.Now)
-{
-    return BadRequest(new
     {
-        mensaje = "La fecha de la reserva debe ser futura."
-    });
-}
+        var validacion = ReservaValidator.Validar(
+            reserva,
+            _clock.Now
+        );
+
+        if (!validacion.EsValida)
+        {
+            return BadRequest(new
+            {
+                mensaje = validacion.Error
+            });
+        }
+
         reserva.Id = 0;
-	reserva.FechaHora = reserva.FechaHora.ToUniversalTime();
+        reserva.FechaHora = reserva.FechaHora.ToUniversalTime();
 
         _context.Reservas.Add(reserva);
         await _context.SaveChangesAsync();
@@ -58,17 +68,23 @@ if (reserva.FechaHora <= DateTimeOffset.Now)
         return CreatedAtAction(
             nameof(ObtenerPorId),
             new { id = reserva.Id },
-            reserva);
+            reserva
+        );
     }
 
     [HttpPut("{id:int}")]
     public async Task<IActionResult> Actualizar(int id, Reserva datos)
     {
-        if (datos.FechaHora <= DateTimeOffset.Now)
+        var validacion = ReservaValidator.Validar(
+            datos,
+            _clock.Now
+        );
+
+        if (!validacion.EsValida)
         {
             return BadRequest(new
             {
-                mensaje = "La fecha de la reserva debe ser futura."
+                mensaje = validacion.Error
             });
         }
 

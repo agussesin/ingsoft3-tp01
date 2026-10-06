@@ -5,12 +5,19 @@ COPY package.json package-lock.json ./
 RUN npm ci
 
 COPY . .
+
+FROM build AS test
+
+RUN npm test -- --coverage
+
+FROM test AS publish
+
 RUN npm run build
 
 FROM nginx:1.27-alpine AS final
 
 COPY nginx.conf /etc/nginx/conf.d/default.conf
-COPY --from=build /app/dist /usr/share/nginx/html
+COPY --from=publish /app/dist /usr/share/nginx/html
 
 EXPOSE 80
 

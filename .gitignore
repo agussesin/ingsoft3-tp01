@@ -14,3 +14,9 @@ build/
 Thumbs.db
 .vscode/
 .idea/
+
+# resultados de tests y coverage
+TestResults/
+coverage/
+coveragereport/
+coverage.json

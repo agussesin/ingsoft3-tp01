@@ -1,9 +1,8 @@
-node_modules/
-dist/
-coverage/
-**/*.test.js
-.vscode/
+node_modules /
+    dist /
+    coverage /
+.vscode /
 .DS_Store
-npm-debug.log*
+npm - debug.log *
 .env
-.env.*
+        .env.*

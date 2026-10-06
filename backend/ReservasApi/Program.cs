@@ -2,6 +2,7 @@
 
 using Microsoft.EntityFrameworkCore;
 using ReservasApi.Data;
+using ReservasApi.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -11,6 +12,7 @@ var connectionString = builder.Configuration
         "No se configuró ConnectionStrings:DefaultConnection.");
 
 builder.Services.AddControllers();
+builder.Services.AddSingleton<IClock, SystemClock>();
 
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(connectionString));

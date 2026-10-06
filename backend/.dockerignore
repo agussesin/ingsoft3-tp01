@@ -6,4 +6,3 @@
 **/*.suo
 **/.DS_Store
 **/TestResults/
-ReservasApi.Tests/
