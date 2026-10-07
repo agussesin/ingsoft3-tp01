@@ -34,7 +34,7 @@ jobs:
             /p:CollectCoverage=true \
             "/p:CoverletOutput=$PWD/coverage/coverage" \
             /p:CoverletOutputFormat=cobertura \
-            /p:Threshold=70 \
+            /p:Threshold=74 \
             "/p:ThresholdType=line%2cbranch" \
             "/p:Exclude=[ReservasApi]Program*%2c[ReservasApi]ReservasApi.Data.*%2c[ReservasApi]ReservasApi.Models.*%2c[ReservasApi]ReservasApi.Services.SystemClock"
 
