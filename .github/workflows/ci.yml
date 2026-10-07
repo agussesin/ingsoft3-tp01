@@ -32,7 +32,7 @@ jobs:
           dotnet test backend.sln \
             -c Release \
             /p:CollectCoverage=true \
-            /p:CoverletOutput=./coverage/coverage \
+            "/p:CoverletOutput=$PWD/coverage/coverage" \
             /p:CoverletOutputFormat=cobertura \
             /p:Threshold=70 \
             "/p:ThresholdType=line%2cbranch" \
