@@ -29,6 +29,9 @@ public static class ReservaValidator
             reserva.CantidadPersonas > MaximoPersonas)
             return new Resultado(false, $"La cantidad de personas debe estar entre {MinimoPersonas} y {MaximoPersonas}.");
 
+        if (reserva.FechaHora > ahora.AddYears(1))
+            return new Resultado(false, "La reserva no puede realizarse con más de un año de anticipación.");
+            
         if (reserva.FechaHora <= ahora)
             return new Resultado(false, "La fecha de la reserva debe ser futura.");
 
