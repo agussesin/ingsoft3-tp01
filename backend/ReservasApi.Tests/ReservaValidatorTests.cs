@@ -38,14 +38,35 @@ public class ReservaValidatorTests
     {
         // Arrange
         var reserva = CrearReservaValida();
-        reserva.FechaHora = Ahora.AddMinutes(-1);
+        reserva.FechaHora = Ahora.AddDays(-1);
 
         // Act
         var resultado = ReservaValidator.Validar(reserva, Ahora);
 
         // Assert
         Assert.False(resultado.EsValida);
-        Assert.Contains("futura", resultado.Error);
+        Assert.Equal(
+            "La fecha de la reserva debe ser futura.",
+            resultado.Error
+        );
+    }
+
+    [Fact]
+    public void FechaConMasDeUnAnioDeAnticipacion_EsRechazada()
+    {
+        // Arrange
+        var reserva = CrearReservaValida();
+        reserva.FechaHora = Ahora.AddYears(1).AddDays(1);
+
+        // Act
+        var resultado = ReservaValidator.Validar(reserva, Ahora);
+
+        // Assert
+        Assert.False(resultado.EsValida);
+        Assert.Equal(
+            "La reserva no puede realizarse con más de un año de anticipación.",
+            resultado.Error
+        );
     }
 
     [Theory]
@@ -64,7 +85,10 @@ public class ReservaValidatorTests
 
         // Assert
         Assert.False(resultado.EsValida);
-        Assert.Contains("entre 1 y 20", resultado.Error);
+        Assert.Equal(
+            "La cantidad de personas debe estar entre 1 y 20.",
+            resultado.Error
+        );
     }
 
     [Fact]
@@ -79,7 +103,10 @@ public class ReservaValidatorTests
 
         // Assert
         Assert.False(resultado.EsValida);
-        Assert.Contains("nombre", resultado.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(
+            "El nombre del cliente es obligatorio.",
+            resultado.Error
+        );
     }
 
     [Fact]
@@ -94,6 +121,9 @@ public class ReservaValidatorTests
 
         // Assert
         Assert.False(resultado.EsValida);
-        Assert.Contains("lugar", resultado.Error, StringComparison.OrdinalIgnoreCase);
+        Assert.Equal(
+            "El lugar es obligatorio.",
+            resultado.Error
+        );
     }
 }
