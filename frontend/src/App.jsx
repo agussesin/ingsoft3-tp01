@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useState } from 'react'
 import './App.css'
+import { cargarReservasDesdeApi } from './api'
+
 import {
   esFechaFutura,
   fechaParaInput,
@@ -25,13 +27,7 @@ function App() {
 
   const cargarReservas = useCallback(async () => {
     try {
-      const respuesta = await fetch(API_URL)
-
-      if (!respuesta.ok) {
-        throw new Error('No se pudieron cargar las reservas.')
-      }
-
-      const datos = await respuesta.json()
+      const datos = await cargarReservasDesdeApi()
       setError('')
       setReservas(datos)
     } catch (problema) {

@@ -40,8 +40,19 @@ describe('lógica de reservas', () => {
     expect(resultado.nombreCliente).toBe('Agus')
   })
 
-  it('usa singular y plural para la cantidad de personas', () => {
-    expect(textoPersonas(1)).toBe('1 persona')
-    expect(textoPersonas(3)).toBe('3 personas')
+  it.each([
+    [1, '1 persona'],
+    [2, '2 personas'],
+    [5, '5 personas'],
+  ])('formatea %i personas correctamente', (cantidad, esperado) => {
+    expect(textoPersonas(cantidad)).toBe(esperado)
+  })
+
+  it('rechaza una fecha inválida', () => {
+    const ahora = new Date('2026-09-01T12:00:00Z')
+
+    const resultado = esFechaFutura('fecha-invalida', ahora)
+
+    expect(resultado).toBe(false)
   })
 })
