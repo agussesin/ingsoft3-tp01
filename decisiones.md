@@ -152,3 +152,164 @@ Los checks requeridos solamente pudieron seleccionarse después de que el workfl
 ### Uso de asistencia de IA
 
 La asistencia de IA se utilizó para explicar los conceptos del pipeline, proponer comandos y revisar la configuración. Cada resultado fue verificado mediante corridas reales de GitHub Actions, la reutilización visible de la caché, un fallo controlado y la protección efectiva de la rama `main`.
+
+## Decisiones del TP5 - Testing y coverage
+
+### Estrategia de pruebas
+
+Se incorporaron pruebas unitarias tanto en backend como en frontend. El objetivo no fue únicamente aumentar la cantidad de tests, sino cubrir reglas de negocio y caminos de decisión relevantes.
+
+En el backend se utilizaron xUnit y Entity Framework Core InMemory. Se alcanzaron 14 ejecuciones de tests, incluyendo casos válidos, casos de error, valores de borde, una prueba parametrizada y una prueba con mock.
+
+En el frontend se utilizaron Vitest y funciones puras separadas de la interfaz. Se ejecutan 8 casos de prueba sobre normalización de reservas, fechas, cantidad de personas y acceso a la API.
+
+Los tests siguen la estructura Arrange, Act y Assert para separar claramente la preparación de datos, la ejecución de la acción y la verificación del resultado.
+
+### Separación de lógica de negocio
+
+La validación de una reserva se extrajo a `ReservaValidator` en lugar de mantenerla mezclada dentro del controlador. Esto permite probar las reglas de negocio sin necesidad de levantar el servidor HTTP ni PostgreSQL.
+
+Entre las reglas verificadas se encuentran nombre y lugar obligatorios, cantidad de personas entre 1 y 20, fecha futura y límite máximo de un año de anticipación.
+
+Esta separación también permitió identificar ramas no cubiertas con mayor claridad mediante branch coverage.
+
+### Mock del reloj
+
+La validación de fechas dependía originalmente de la hora real del sistema. Esto hacía que una prueba pudiera depender del momento exacto en que se ejecutara.
+
+Se creó la interfaz `IClock` y una implementación `SystemClock`. El controlador recibe el reloj mediante inyección de dependencias y utiliza `_clock.Now`.
+
+En producción se inyecta `SystemClock`, mientras que en los tests se puede utilizar un reloj controlado o un mock. De esta forma las pruebas de fecha son deterministas.
+
+Con Moq se verificó además que el controlador consulte el reloj una sola vez al crear una reserva.
+
+### Mock en frontend
+
+Para evitar que una prueba unitaria dependa de una llamada HTTP real, se separó la función encargada de cargar reservas desde la API.
+
+`cargarReservasDesdeApi` recibe como dependencia la función que realiza la petición. En producción utiliza la implementación real y en el test se inyecta `vi.fn()`.
+
+Esto permite verificar que se solicite `/api/reservas` sin realizar una llamada de red real. La aplicación `App.jsx` utiliza esa misma función, por lo que el código probado es parte del flujo real de la aplicación y no una función creada únicamente para el test.
+
+### Métricas de coverage
+
+Se utilizaron line coverage y branch coverage.
+
+Line coverage indica qué proporción de líneas ejecutables fue recorrida por los tests. Branch coverage permite observar si se recorrieron los distintos caminos posibles de una decisión, por ejemplo las ramas verdaderas y falsas de un `if`.
+
+Branch coverage se consideró especialmente importante porque es posible ejecutar una línea sin haber comprobado todos los caminos de decisión asociados.
+
+Un porcentaje alto de coverage no garantiza por sí solo la calidad de los tests. Por ejemplo, un test podría ejecutar una función completa pero no realizar assertions útiles. Por eso el coverage se utiliza como señal complementaria y no como sustituto de pruebas correctamente diseñadas.
+
+### Exclusiones del coverage del backend
+
+Para calcular el quality gate del backend se excluyeron `Program`, `AppDbContext`, `Reserva` y `SystemClock`.
+
+`Program` contiene principalmente configuración y arranque de la aplicación. `AppDbContext` representa infraestructura de acceso a datos. `Reserva` contiene principalmente propiedades y metadatos de validación. `SystemClock` es un adaptador mínimo sobre la hora del sistema.
+
+El objetivo fue que el porcentaje utilizado por el gate represente principalmente código con comportamiento que pueda verificarse mediante pruebas unitarias, especialmente `ReservasController` y `ReservaValidator`.
+
+Las exclusiones utilizadas para generar el reporte y para evaluar el threshold son las mismas, evitando mostrar una métrica diferente de la que realmente decide si el pipeline pasa o falla.
+
+### Threshold del backend
+
+Antes de elegir el threshold se midió el coverage real del proyecto.
+
+Con las exclusiones definidas, el backend se encontraba ligeramente por encima del 70% tanto en line coverage como en branch coverage. Por ese motivo se eligió un threshold de 70% para ambas métricas.
+
+El valor no se eligió como un porcentaje estándar, sino a partir del estado real del proyecto. El objetivo es impedir regresiones de cobertura sin exigir inicialmente un porcentaje artificialmente superior al nivel que el proyecto puede sostener.
+
+El threshold puede incrementarse progresivamente en futuras iteraciones a medida que aumenta la cobertura del sistema.
+
+### Threshold del frontend
+
+El frontend obtuvo 80% de line coverage y 100% de branch coverage sobre la lógica incluida en la medición.
+
+Se configuró un threshold de 80% para líneas y ramas. De esta forma el estado actual pasa el gate, pero una reducción de cobertura puede bloquear el pipeline.
+
+Se incluyeron `reservas.js` y `api.js`, que contienen la lógica seleccionada para pruebas unitarias. La interfaz React no se incluyó en este alcance porque el TP se enfocó en lógica unitaria sin DOM; las pruebas de interfaz o end-to-end corresponden a otro nivel de la pirámide de testing.
+
+### Quality gate en Docker
+
+Los Dockerfiles de backend y frontend se modificaron para incorporar una etapa de tests antes de generar la imagen final.
+
+En backend la secuencia es:
+
+`build -> test -> publish -> final`
+
+En frontend la secuencia es:
+
+`build -> test -> publish -> final`
+
+La etapa `test` ejecuta las pruebas y valida el coverage. Las etapas posteriores dependen de ella, por lo que una imagen final no puede generarse si los tests o el quality gate fallan.
+
+Esto mantiene al Dockerfile como parte de la fuente de verdad utilizada tanto localmente como por el pipeline.
+
+### Integración con GitHub Actions
+
+Se mantuvieron los jobs obligatorios `build-backend` y `build-frontend`.
+
+Además de construir las imágenes Docker, el workflow ejecuta explícitamente las pruebas y genera coverage. Los reportes quedan visibles en los logs y se publican como artifacts descargables.
+
+Esto permite distinguir si una falla proviene de tests, coverage o construcción de la imagen y facilita inspeccionar el resultado sin reproducir necesariamente la corrida de forma local.
+
+### Demostración del quality gate
+
+En el primer Pull Request se agregó de forma controlada una nueva rama de validación sin agregar inicialmente el test correspondiente.
+
+Los 13 tests existentes continuaron pasando, pero el resultado de coverage fue:
+
+- Line coverage: 75%
+- Branch coverage: 69,23%
+- Threshold: 70%
+
+El pipeline quedó rojo porque branch coverage estaba por debajo del mínimo, aunque todos los tests habían pasado. Como `build-backend` es un check requerido, GitHub bloqueó el merge.
+
+Luego se agregó el test `FechaConMasDeUnAnioDeAnticipacion_EsRechazada`. La cantidad de tests pasó a 14, el coverage volvió a superar el threshold y los jobs `build-backend` y `build-frontend` quedaron verdes. El Pull Request pudo entonces completarse mediante Squash and merge.
+
+Esta prueba demuestra que “tests verdes” no implica automáticamente que un cambio cumpla la política de calidad.
+
+### Segundo Pull Request bloqueado
+
+Se creó un segundo Pull Request pequeño exclusivamente para demostrar el bloqueo del quality gate durante la defensa.
+
+En esa rama se propone aumentar temporalmente el threshold del backend de 70% a 74%.
+
+Los 14 tests continúan pasando. La medición del pipeline muestra aproximadamente 76,31% de line coverage y 73,07% de branch coverage. Como branch coverage no alcanza el 74%, `build-backend` queda rojo, `build-frontend` permanece verde y GitHub mantiene bloqueado el merge.
+
+Este Pull Request se deja deliberadamente abierto y sin mergear para utilizarlo como evidencia durante la defensa.
+
+### Reportes de coverage
+
+Los reportes de coverage se generan automáticamente en CI y se publican como artifacts.
+
+En backend se utiliza Coverlet para producir el archivo Cobertura y ReportGenerator para generar un resumen legible y un reporte HTML.
+
+En frontend Vitest utiliza el provider V8 y genera reportes de texto, HTML, LCOV y resumen JSON.
+
+Los artifacts de coverage no se versionan en Git porque son resultados generados y reproducibles. Por ese motivo `TestResults/`, `coverage/`, `coveragereport/` y `coverage.json` se agregaron a `.gitignore`.
+
+### Problemas encontrados y resolución
+
+Al agregar tests a los Dockerfiles se detectó que `backend/.dockerignore` excluía completamente `ReservasApi.Tests/`. Docker no podía copiar el proyecto y el build fallaba. Se eliminó esa exclusión porque TP5 requiere ejecutar los tests durante la construcción.
+
+En frontend ocurría algo equivalente: `.dockerignore` excluía `**/*.test.js`. Vitest se ejecutaba dentro del contenedor pero informaba `No test files found`, dejando coverage en 0%. Se eliminó esa regla y los tests comenzaron a ejecutarse correctamente.
+
+Al incorporar el reporte de backend en GitHub Actions, ReportGenerator buscaba `coverage.cobertura.xml` en una ruta diferente de la utilizada por Coverlet. Se corrigió `CoverletOutput` para generar el reporte en una ubicación estable dentro de `backend/coverage/`.
+
+Durante el refactor para introducir `IClock`, los tests existentes dejaron de compilar porque el constructor de `ReservasController` comenzó a requerir un reloj. Se actualizaron los tests utilizando un reloj controlado y posteriormente se agregó el mock correspondiente.
+
+También se detectó un test de frontend colocado accidentalmente dentro de otro `it`, situación que Vitest rechaza. Se corrigió la estructura dejando ambos tests al mismo nivel dentro del `describe`.
+
+### Evidencias
+
+- Corrida con reporte de coverage: https://github.com/agussesin/ingsoft3-tp01/actions/runs/37680815530/job/112996063875 
+- Corrida bloqueada por threshold en el primer PR: https://github.com/agussesin/ingsoft3-tp01/actions/runs/37679191957/job/112990480403 
+- Pull Request #16 mergeado con la secuencia completa: https://github.com/agussesin/ingsoft3-tp01/pull/16
+- Segundo Pull Request abierto y bloqueado: https://github.com/agussesin/ingsoft3-tp01/pull/17
+
+### Uso de asistencia de IA
+
+La asistencia de IA se utilizó para explicar conceptos de testing, coverage, mocks y quality gates; proponer casos de prueba; orientar el refactor necesario para introducir `IClock`; revisar configuraciones de Coverlet, Vitest, Docker y GitHub Actions; y analizar errores encontrados durante la implementación.
+
+Las propuestas no se incorporaron sin verificación. Se comprobaron mediante compilaciones locales, ejecución de tests, mediciones reales de coverage, builds Docker y corridas de GitHub Actions. También se verificó explícitamente el bloqueo del Pull Request cuando branch coverage quedó debajo del threshold y su recuperación después de agregar el test faltante.
