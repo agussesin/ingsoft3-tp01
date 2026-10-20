@@ -168,8 +168,9 @@ jobs:
           for i in $(seq 1 30); do
             if curl -fsS --max-time 10 "$URL_API/health" \
                && curl -fsS --max-time 10 "$URL_API/api/reservas" > /dev/null \
-               && curl -fsS --max-time 10 "$URL_FRONT/" > /dev/null; then
-              echo "QA responde: API + BD + frontend"
+               && curl -fsS --max-time 10 "$URL_FRONT/" > /dev/null \
+               && curl -fsS --max-time 10 "$URL_FRONT/api/reservas" > /dev/null; then
+              echo "QA responde: API + BD + frontend + proxy /api/reservas"
               exit 0
             fi
 
