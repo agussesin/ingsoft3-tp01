@@ -12,7 +12,7 @@ server {
 
     location /api/ {
         proxy_pass $backend_api;
-	proxy_set_header Host reservas-api-qa.onrender.com;
+	proxy_set_header Host $proxy_host;
         proxy_ssl_server_name on;
     }
 }
