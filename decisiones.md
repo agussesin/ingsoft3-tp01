@@ -1,5 +1,46 @@
 # Decisiones tomadas - TP1 Ingeniería de Software III
 
+
+## Enlaces del TP7
+
+### Imágenes públicas
+
+- [Paquete backend](https://github.com/users/agussesin/packages/container/package/ingsoft3-tp01-backend)
+- [Paquete frontend](https://github.com/users/agussesin/packages/container/package/ingsoft3-tp01-frontend)
+
+Referencias de la versión corregida, verificadas en los cuatro servicios de Render:
+
+- `ghcr.io/agussesin/ingsoft3-tp01-backend:sha-d3ce7332403048ad3f359dac27fa862946938e67`
+- `ghcr.io/agussesin/ingsoft3-tp01-frontend:sha-d3ce7332403048ad3f359dac27fa862946938e67`
+
+Ambos paquetes se comprobaron mediante descarga sin credenciales al comenzar TP7, con la etiqueta `sha-335c51f863060edcd996d80a89f3492411e9cb26` y plataforma `linux/amd64`.
+
+### Evidencia del gate: integración verde y E2E roja
+
+- [Commit que cambió el botón de la aplicación, sin modificar las pruebas](https://github.com/agussesin/ingsoft3-tp01/commit/1c96b09)
+- [Corrida roja: smoke verde, integración verde, E2E roja y PROD salteado](https://github.com/agussesin/ingsoft3-tp01/actions/runs/39620225388)
+- [Reporte de integración: 3 pruebas aprobadas](https://github.com/agussesin/ingsoft3-tp01/actions/runs/39620225388/artifacts/12354443014)
+- [Reporte E2E: 3 pruebas fallidas, con capturas y trazas](https://github.com/agussesin/ingsoft3-tp01/actions/runs/39620225388/artifacts/12356025128)
+
+Los reportes se descargaron y revisaron. La traza mostró que el navegador esperaba “Guardar reserva”, mientras la aplicación mostraba “Confirmar reserva”. La API y la base seguían funcionando; el fallo estaba en la interfaz. PROD no solicitó aprobación ni recibió la imagen de la rotura.
+
+### Corrección y promoción
+
+- [PR del arreglo, con las pruebas intactas](https://github.com/agussesin/ingsoft3-tp01/pull/31)
+- [Corrida posterior completamente verde, con aprobación y despliegue a PROD](https://github.com/agussesin/ingsoft3-tp01/actions/runs/39624631691)
+
+En Render se verificó que API y frontend, en QA y PROD, ejecutaban la etiqueta `sha-d3ce7332403048ad3f359dac27fa862946938e67`, mediante Deploy Hook. Los registros de Render se mostrarán en vivo durante la defensa porque requieren acceso al panel.
+
+### Entornos
+
+- [QA: página de reservas](https://reservas-front-qa-h1ki.onrender.com/)
+- [PROD: página de reservas](https://reservas-front-prod.onrender.com/)
+- [API de QA](https://reservas-api-qa.onrender.com/api/reservas)
+- [API de PROD](https://reservas-api-prod-zulr.onrender.com/api/reservas)
+
+En los campos QA y PROD del formulario se informa únicamente la URL del frontend correspondiente. Los servicios deben mantenerse disponibles hasta la defensa y abrirse con anticipación por el arranque en frío del plan gratuito.
+
+
 ## Enlaces de este TP — TP6
 
 ### Imágenes públicas
@@ -614,4 +655,165 @@ Las propuestas se comprobaron mediante:
 La IA dio inicialmente por terminado el trabajo antes de revisar la consigna completa. Esa conclusión se corrigió: se identificaron y completaron pruebas faltantes y se dejó la documentación y la release como pendientes hasta verificarlas.
 
 El texto y el motivo de rechazo también fueron propuestos con asistencia de IA. Los adopté después de contrastarlos con el comportamiento observado y decidir frenar esa promoción. Debo poder explicar cada afirmación y mostrar su evidencia en la defensa.
+
+
+## Decisiones del TP7 - Imágenes, integración y E2E
+
+### Build once, deploy many
+
+En TP6, Actions publicaba las imágenes, pero Render reconstruía el repositorio para cada entorno. Aunque QA y PROD recibieran el mismo commit, una dependencia o imagen base podía cambiar entre construcciones.
+
+En TP7, el pipeline publica una imagen de backend y una de frontend por commit integrado. Los cuatro servicios de Render ejecutan esas imágenes de GHCR. QA verifica los artefactos que después recibe PROD, sin reconstruirlos durante la promoción.
+
+Se conservaron los jobs de build y publicación del TP6. La publicación sigue al final de cada job, después de sus verificaciones, y solamente se habilita en pushes a main. Se utiliza GITHUB_TOKEN con packages: write, sin incorporar un token personal.
+
+### Etiquetas e identidad de la versión
+
+Las imágenes usan sha-<commit completo>, con los 40 caracteres del commit de main. Un SHA abreviado no identifica una etiqueta existente en el registry.
+
+No se publica latest porque es una referencia móvil que no identifica la versión aprobada. La etiqueta sha relaciona la imagen con su código, pero técnicamente también puede reasignarse: volver a ejecutar el build del mismo commit podría publicar otro contenido bajo esa etiqueta. Por eso no se reconstruyen corridas antiguas para promover versiones.
+
+El digest sha256 identifica el contenido de forma inmutable. Promover por digest daría una garantía más fuerte; este TP utiliza la convención sha-<commit>.
+
+El tag de Git v7.0.0 y la release identificarán el cierre del práctico sobre el commit efectivamente desplegado en PROD. Para encontrar sus imágenes se obtiene el commit con `git rev-list -n1 v7.0.0` y se utiliza sha-<ese commit> en ambos paquetes.
+
+### Cambio de fuente en Render
+
+Se cambió la fuente de los cuatro servicios existentes a Existing Image. No se crearon servicios nuevos: se conservaron URLs, variables, hooks e historial.
+
+La imagen inicial configurada fue sha-335c51f863060edcd996d80a89f3492411e9cb26. Esa configuración es el punto de partida, no una indicación de la versión actualmente ejecutada. Cada deploy del pipeline envía su propia imagen mediante imgURL.
+
+Primero se probó el frontend de QA mediante su deploy hook. Después se cambiaron las fuentes de los otros tres servicios y se integró el cambio conjunto de QA y PROD en el workflow.
+
+Los hooks dejaron de recibir ref y ahora reciben imgURL mediante curl con --get y --data-urlencode. QA y PROD calculan las referencias usando el mismo github.sha. Un nombre de imagen incompatible o una etiqueta inexistente hace fallar el pedido y, mediante curl -f, el paso del pipeline.
+
+Los paquetes son públicos y Render los descarga sin credenciales. Las imágenes no contienen contraseñas de las bases ni claves de despliegue.
+
+### Cómo se comprueba qué imagen corre
+
+En Deploys de cada servicio se inspecciona el último despliegue activo: debe nombrar la etiqueta sha de la corrida y mostrar Deploy Hook como disparador. Se comprobó para API y frontend tanto en QA como en PROD.
+
+El smoke verifica respuestas de health, consulta a la base, frontend y proxy. No demuestra por sí solo que el despliegue nuevo haya terminado: una versión anterior puede seguir respondiendo mientras Render despliega o si el despliegue falla.
+
+Verificar automáticamente el commit servido requeriría incorporarlo a la imagen y compararlo desde el smoke. Es una mejora conceptual que no se implementó en este TP. La comprobación de versión se realizó manualmente en Render.
+
+No se utiliza Manual Deploy para promover versiones: puede desplegar la imagen inicial de Settings, que puede ser anterior a la última enviada por el pipeline.
+
+### La misma imagen del frontend en ambos entornos
+
+La imagen contiene React compilado, nginx y su plantilla de configuración. El navegador usa la ruta relativa /api/reservas.
+
+BACKEND_URL se configura al arrancar el servicio y apunta a la API de su entorno. DNS_RESOLVER también se configura en el servicio. Las conexiones a PostgreSQL se mantienen en las variables de cada backend.
+
+Así cambia la configuración del entorno, sin construir un frontend distinto para QA y PROD.
+
+### Pruebas de integración elegidas
+
+Se implementaron tres pruebas en frontend/e2e/api.spec.js con el fixture request de Playwright, sin navegador:
+
+1. Crear una reserva, consultarla por ID y en el listado, borrarla y comprobar que ya no existe.
+2. Enviar nombreCliente vacío, comprobar HTTP 400 y verificar que no se agregó ningún registro. Es la adaptación del caso de “título vacío” de la guía a la entidad Reserva.
+3. Crear una reserva, modificar lugar y cantidad de personas, consultar nuevamente para verificar persistencia y borrarla comprobando su ausencia.
+
+La edición se eligió porque corregir los datos de una reserva es una operación cotidiana. Si una modificación parece guardarse y después desaparece, la persona que administra las reservas necesita reclamarlo.
+
+Estas pruebas recorren HTTP, controlador, Entity Framework, driver de PostgreSQL y base real. No usan WebApplicationFactory, SQLite, InMemory ni respuestas simuladas.
+
+Se eligió integración amplia contra la API desplegada de QA. Además de persistencia, ejercita configuración, red y despliegue reales sin levantar otra base dentro del job. Pierde aislamiento y depende de disponibilidad y datos compartidos. La integración estrecha, con API y PostgreSQL descartables en el pipeline, permitiría detectar problemas antes del deploy y aislar corridas, a cambio de más configuración.
+
+No se repiten exhaustivamente todos los bordes del validador: corresponden a los unitarios del TP5.
+
+### Flujos E2E elegidos
+
+Se implementaron tres flujos en frontend/e2e/reservas.spec.js:
+
+1. Completar el formulario, guardar, comprobar la tarjeta propia, eliminar mediante la interfaz y verificar que desaparece.
+2. Enviar un nombre compuesto por espacios, comprobar el mensaje de error visible y verificar que no se creó una reserva con el lugar único de esa prueba.
+3. Crear una reserva, editar lugar y cantidad de personas, recargar y comprobar que los cambios persisten; luego eliminarla.
+
+Cada flujo interactúa con la pantalla y verifica su propio resultado. La edición con recarga se eligió porque perder una corrección al volver a abrir la agenda afecta directamente al trabajo diario.
+
+Se usan labels y roles accesibles. Se agregó role="alert" al mensaje de error y se selecciona cada tarjeta por el nombre único de la reserva. No se simula el backend ni se interceptan respuestas con mocks.
+
+No se trasladaron a E2E todas las combinaciones de fechas, longitudes y cantidades: serían pruebas lentas y redundantes con la base de la pirámide.
+
+### Datos propios y limpieza
+
+Los nombres combinan fecha de ejecución y UUID para evitar colisiones. Las fechas de reserva se calculan hacia el futuro, sin depender de una fecha fija.
+
+Las pruebas de integración que crean datos ejecutan su limpieza en finally y comprueban DELETE, consulta por ID con 404 y ausencia en el listado.
+
+Las E2E de creación y edición borran desde la pantalla y comprueban la desaparición. Además tienen una limpieza de respaldo mediante pedidos reales al proxy del frontend, seguida de una consulta que verifica la ausencia.
+
+Se usa un worker por suite. La comprobación de que el alta inválida no modifica los IDs supone que no hay otra escritura simultánea en QA; no debe operarse manualmente la agenda mientras corre la suite.
+
+### Cold start y pruebas flaky
+
+La configuración establece 60 segundos por test, 15 segundos por aserción y un reintento. El smoke y la integración preceden al navegador y ayudan a despertar QA.
+
+Se utilizan las esperas de Playwright, sin sleeps dentro de los tests ni saltos automáticos si el entorno no responde. Un entorno inaccesible debe hacer fallar la prueba.
+
+Un test flaky pasa o falla sin un cambio relevante en la aplicación. Que pase en el reintento no demuestra que esté bien: Playwright lo marca como flaky y debe revisarse. Los reportes verdes locales revisados mostraron tres aprobados, cero flaky y cero salteados.
+
+Durante la prueba inicial del frontend desplegado apareció un error al cargar reservas. Después, API y proxy respondieron 200 y la recarga mostró los datos. Es compatible con arranque en frío, pero no se afirmó haber demostrado ni eliminado su causa. Antes de entregar y defender deben verificarse datos cargados, no solamente una portada accesible.
+
+### Gate de promoción y aprobación
+
+Las suites están en el mismo workflow que los deploys y corren por el push a main:
+
+build-backend y build-frontend → deploy-qa y smoke → integracion → e2e → aprobación → deploy-prod y smoke.
+
+integracion depende de deploy-qa; e2e depende de integracion; deploy-prod depende de e2e. No se usa continue-on-error, ocultamiento del código de salida ni condiciones que permitan promover después de un fallo.
+
+Los pasos que publican reportes utilizan !cancelled() para conservar evidencia también cuando falla una suite. Sus artefactos tienen nombres distintos y retención de 30 días.
+
+El environment de producción conserva el nombre prod utilizado en TP6, con required reviewer y secretos propios. Es el entorno denominado production en la consigna. Se agregó concurrency para deploy-prod con cancel-in-progress: false.
+
+### Demostración del freno y diagnóstico
+
+Se cambió solamente el texto visible del botón de la aplicación, de “Guardar reserva” a “Confirmar reserva”. El commit de la rotura no modificó e2e ni otros tests.
+
+Los unitarios y builds pasaron. En la corrida 39620225388, el smoke pasó, las tres pruebas de integración aprobaron y las tres E2E fallaron. deploy-prod quedó salteado sin solicitar aprobación.
+
+El reporte rojo y la traza del reintento mostraron el formulario completado y el click esperando el nombre “Guardar reserva”, mientras la pantalla ofrecía “Confirmar reserva”. El test agotó su timeout. Después apareció un error secundario de limpieza porque el contexto de request ya estaba cerrado; la traza permitió distinguirlo de la causa inicial. El click de guardar no llegó a ejecutarse.
+
+El par integración verde/E2E roja indica que las operaciones verificadas de API y base funcionan, pero el flujo de pantalla no cumple el contrato esperado. Si fallara integración, E2E quedaría salteada por su dependencia: apuntaría a API, base, configuración o conectividad, y requeriría diagnóstico.
+
+Se restauró el texto de la aplicación sin modificar las pruebas. La corrida 39624631691 pasó integración y E2E, solicitó aprobación y terminó correctamente en PROD. Se verificó en los cuatro servicios la etiqueta sha-d3ce7332403048ad3f359dac27fa862946938e67 mediante Deploy Hook.
+
+El gate protege los flujos elegidos, no toda la aplicación. No cubre automáticamente casos no escritos, problemas exclusivos de PROD, permisos administrativos del proveedor ni configuraciones que cambien después de probar.
+
+### QA compartido y corridas concurrentes
+
+QA es un entorno compartido. Una corrida nueva podría desplegar otra imagen mientras la anterior está probando; incluso un resultado verde podría corresponder parcialmente a la imagen equivocada.
+
+La regla operativa es un merge por vez hasta terminar integración y E2E. Para investigar se comparan horarios de Actions y etiquetas de Render. Una promoción anterior que haya quedado obsoleta se rechaza con motivo; no se repiten sus suites contra un QA que ya cambió de imagen.
+
+La concurrencia de deploy-prod no bloquea QA ni sustituye esa revisión. Un entorno descartable por corrida resolvería el aislamiento, pero queda fuera de esta implementación.
+
+### Problemas encontrados
+
+Se corrigió la sangría de los jobs para evitar que quedaran dentro del script del smoke. También se verificó que las URLs fueran texto simple y no enlaces Markdown pegados dentro del código.
+
+Vitest se configuró para excluir e2e/** y evitar que intente ejecutar los specs de Playwright. Se versionaron package.json y package-lock.json, y se excluyeron playwright-report/ y test-results/ del repositorio.
+
+Las fechas devueltas por la API se comparan por instante y no por representación textual: Z y +00:00 pueden expresar el mismo momento.
+
+La instalación local advirtió incompatibilidad de la versión Node 23 con dependencias de ESLint y reportó vulnerabilidades. La instalación y las pruebas utilizadas finalizaron correctamente; eso no equivale a haber corregido esas advertencias. El pipeline utiliza Node 22.
+
+### Release y conservación de evidencias
+
+La release v7.0.0 se crea al cerrar la entrega, sobre el commit comprobado como activo en PROD mediante Deployments y Render, después de incorporar y verificar la documentación.
+
+Se utiliza --verify-tag para impedir que GitHub cree accidentalmente un tag sobre la punta de main. Los dos paquetes deben conservar la etiqueta sha correspondiente al commit de la release.
+
+Los enlaces de la corrida roja, ambos reportes y la corrida verde están al principio del documento. Los artefactos tienen retención limitada; las URLs de QA y PROD y los registros de Render deben mantenerse disponibles hasta la defensa.
+
+### Uso de IA y verificación
+
+La IA asistió en la configuración de Playwright, los seis tests, el workflow, la interpretación de errores y los borradores de documentación. Los cambios se aplicaron y revisaron paso a paso.
+
+Se verificaron mediante seis pruebas verdes contra Docker Compose y PostgreSQL reales; reporte HTML y traza local; suites contra QA desplegado; rotura de la aplicación con tests intactos; comparación de reportes verde y rojo; bloqueo de PROD; arreglo, aprobación y promoción posterior.
+
+Las decisiones de aprobar y configurar los entornos fueron realizadas por la estudiante. Debo poder explicar qué produce cada prueba, qué verifica, cómo limpia sus datos, contra qué entorno corre y qué ocurre cuando falla.
 
