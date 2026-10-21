@@ -20,3 +20,11 @@ TestResults/
 coverage/
 coveragereport/
 coverage.json
+# Terraform: estado, proveedores y variables sensibles
+**/.terraform/
+*.tfstate
+*.tfstate.*
+*.tfvars
+*.tfvars.json
+crash.log
+crash.*.log
