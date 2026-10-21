@@ -161,7 +161,7 @@ function App() {
       </header>
 
       <main>
-        {error && <p className="mensaje-error">{error}</p>}
+        {error && <p className="mensaje-error" role="alert">{error}</p>}
 
         {vista === 'formulario' ? (
           <section className="panel formulario-panel">
