@@ -817,3 +817,160 @@ Se verificaron mediante seis pruebas verdes contra Docker Compose y PostgreSQL r
 
 Las decisiones de aprobar y configurar los entornos fueron realizadas por la estudiante. Debo poder explicar qué produce cada prueba, qué verifica, cómo limpia sus datos, contra qué entorno corre y qué ocurre cuando falla.
 
+
+# TP8 — Infraestructura como Código (Terraform)
+
+## Objetivo y alcance
+
+Se implementó un entorno de preproducción (`preprod`) utilizando Terraform como herramienta de Infraestructura como Código (IaC). El objetivo es poder crear, verificar, destruir y recrear la infraestructura mediante archivos declarativos, sin configurar manualmente cada servicio desde las interfaces de Neon y Render.
+
+El entorno `preprod` es independiente de QA y PROD. Se reutilizan las imágenes Docker generadas en los trabajos anteriores, pero se crean servicios y una base de datos exclusivos para este entorno.
+
+No se modificó el pipeline de promoción QA → PROD, ya que el alcance de este trabajo es el aprovisionamiento de infraestructura.
+
+## Organización y proveedores
+
+Se creó la carpeta `infra/` con los siguientes archivos:
+
+- `providers.tf`: configuración de Terraform y versiones de proveedores.
+- `neon.tf`: proyecto, usuario y base de datos PostgreSQL.
+- `render.tf`: servicios de backend y frontend.
+- `.terraform.lock.hcl`: versiones y verificaciones de integridad de las dependencias seleccionadas.
+
+Se utilizó Terraform 1.17.0 con los proveedores `kislerdm/neon` versión `0.18.0` y `render-oss/render` versión `1.9.1`.
+
+Se fijaron las versiones de los proveedores para reducir cambios inesperados entre ejecuciones. El archivo de bloqueo se versiona para favorecer la reproducibilidad.
+
+La infraestructura se definió de manera declarativa: los archivos describen el estado deseado y Terraform determina las operaciones necesarias para alcanzarlo.
+
+## Aislamiento de preproducción
+
+Se decidió crear un proyecto nuevo en Neon llamado `reservas-preprod`, con una base de datos y un usuario propios, ambos llamados `reservas_preprod`.
+
+El backend y el frontend se desplegaron como servicios independientes de Render, denominados `reservas-api-preprod` y `reservas-front-preprod`, utilizando el plan gratuito y la región Ohio.
+
+El backend recibe la cadena de conexión mediante la variable de entorno `ConnectionStrings__DefaultConnection`. Esta cadena se construye a partir de los recursos creados por Terraform y requiere SSL para conectarse a Neon.
+
+El frontend recibe `BACKEND_URL` con la dirección del backend de `preprod`, obtenida del recurso correspondiente de Terraform. También se configuró `DNS_RESOLVER` con el valor `8.8.8.8` para la resolución DNS desde Nginx.
+
+Las referencias entre recursos permiten que Terraform determine el orden de creación. Por ejemplo, la base de datos depende del proyecto y del usuario de Neon; el frontend utiliza la URL del backend.
+
+Se evitó reutilizar la base de datos o los servicios de QA y PROD. Esto permite realizar pruebas de infraestructura sin alterar los entornos existentes.
+
+## Reutilización de imágenes Docker
+
+En lugar de reconstruir las aplicaciones durante el aprovisionamiento, se utilizaron las imágenes publicadas previamente en GitHub Container Registry:
+
+- `ghcr.io/agussesin/ingsoft3-tp01-backend`
+- `ghcr.io/agussesin/ingsoft3-tp01-frontend`
+
+Ambas utilizan la etiqueta:
+
+`sha-45300b62ba73a971ad382c9ed22ac96f0a3cceca`
+
+Se eligió una etiqueta asociada a un commit específico, en lugar de `latest`, para identificar exactamente qué versión de la aplicación se despliega y evitar cambios involuntarios de imagen.
+
+Esto separa la construcción del software del aprovisionamiento de la infraestructura.
+
+## Credenciales, estado y archivos versionados
+
+Las credenciales de Neon y Render se proporcionaron mediante variables de entorno de la terminal: `NEON_API_KEY`, `RENDER_API_KEY` y `RENDER_OWNER_ID`.
+
+Las claves no se escribieron directamente en los archivos `.tf` ni se incorporaron al repositorio.
+
+Se modificó `.gitignore` para excluir `.terraform/`, archivos `*.tfstate`, `*.tfstate.*`, `*.tfvars`, `*.tfvars.json` y registros de fallos de Terraform.
+
+El estado de Terraform contiene información sobre los recursos creados y puede incluir valores sensibles, como contraseñas y cadenas de conexión. Por eso no debe publicarse en GitHub.
+
+En cambio, `.terraform.lock.hcl` sí se versiona porque permite conservar la selección de proveedores.
+
+El estado se mantiene localmente. Esta solución es adecuada para la ejecución individual del trabajo, pero no proporciona las ventajas de un backend remoto con control de acceso y bloqueo para trabajo colaborativo.
+
+## Validación y aprovisionamiento
+
+Primero se ejecutó `terraform init` para descargar e inicializar los proveedores.
+
+Luego se utilizó `terraform validate` para comprobar la validez de la configuración y `terraform fmt` para mantener un formato consistente.
+
+Antes de crear recursos, `terraform plan` mostró:
+
+`Plan: 5 to add, 0 to change, 0 to destroy.`
+
+Los cinco recursos administrados fueron:
+
+1. Proyecto de Neon.
+2. Usuario de PostgreSQL en Neon.
+3. Base de datos PostgreSQL en Neon.
+4. Servicio de backend en Render.
+5. Servicio de frontend en Render.
+
+La primera ejecución de `terraform apply` falló porque la API de Neon requería especificar `org_id` para crear el proyecto dentro de la organización.
+
+Se corrigió la configuración de `neon_project` agregando el identificador de la organización. Después de validar nuevamente, `terraform apply` finalizó con:
+
+`Apply complete! Resources: 5 added, 0 changed, 0 destroyed.`
+
+Este error permitió comprobar que una configuración sintácticamente válida no garantiza que el proveedor externo acepte la operación. Terraform depende también de los requisitos y permisos de las APIs utilizadas.
+
+## Verificación funcional
+
+Después del aprovisionamiento se verificó que la API respondiera correctamente al endpoint `/health`, con estado HTTP 200 y la respuesta `{"status":"ok"}`.
+
+También se consultó `/api/reservas`, que respondió HTTP 200 con una lista vacía (`[]`), consistente con una base de datos nueva.
+
+Se abrió el frontend desplegado en Render y se comprobó que la interfaz del gestor de reservas cargara correctamente y mostrara cero reservas.
+
+Estas comprobaciones permiten verificar el funcionamiento inicial de la aplicación en `preprod`, además de la creación de los recursos.
+
+Una respuesta correcta de `/health` por sí sola no demuestra la conexión a PostgreSQL; por eso también se probó un endpoint que consulta reservas.
+
+## Idempotencia
+
+Con los cinco recursos creados se ejecutó nuevamente `terraform plan`.
+
+El resultado fue:
+
+`No changes. Your infrastructure matches the configuration.`
+
+Esto confirma que, en ese momento, el estado real de la infraestructura coincidía con la configuración declarada y Terraform no necesitaba realizar modificaciones.
+
+La idempotencia es importante porque permite repetir operaciones de infraestructura sin generar recursos duplicados ni cambios innecesarios.
+
+## Destrucción y recreación
+
+Se ejecutó `terraform destroy` para eliminar completamente el entorno `preprod`.
+
+Antes de confirmar, el plan indicó:
+
+`Plan: 0 to add, 0 to change, 5 to destroy.`
+
+La ejecución finalizó correctamente:
+
+`Destroy complete! Resources: 5 destroyed.`
+
+Posteriormente se volvió a ejecutar `terraform apply` para reconstruir el entorno a partir de los archivos declarativos.
+
+La prueba demuestra que los recursos de preproducción no dependen de una configuración manual irrepetible: pueden eliminarse y reconstruirse mediante Terraform.
+
+La destrucción de la base de datos implica la pérdida de sus datos. Por eso este procedimiento se aplica únicamente al entorno descartable `preprod`, no a QA ni PROD.
+
+## Limitaciones y decisiones pendientes
+
+El uso del plan gratuito de Render puede introducir tiempos de arranque en frío, por lo que la disponibilidad inmediata de la aplicación no está garantizada.
+
+Las imágenes Docker se referencian mediante una etiqueta de commit fija. Si se desea desplegar otra versión, debe actualizarse esa referencia de manera explícita.
+
+El estado de Terraform es local y no se utiliza un backend remoto compartido. Tampoco se automatizó el aprovisionamiento mediante GitHub Actions.
+
+La prueba de idempotencia demuestra ausencia de diferencias en el momento de la consulta, pero no reemplaza una prueba específica de detección de cambios externos o *drift*.
+
+## Uso de IA y verificación
+
+La IA asistió en la instalación y configuración de Terraform, la definición de recursos de Neon y Render, la interpretación del esquema de los proveedores, la resolución del error de `org_id` y la preparación de la documentación.
+
+Los comandos fueron ejecutados y sus resultados revisados paso a paso.
+
+Se verificó la creación de cinco recursos, la respuesta HTTP del backend, la consulta de reservas, la carga del frontend, la ausencia de cambios en un nuevo plan y la destrucción de los cinco recursos.
+
+Para la defensa debo poder explicar qué es IaC, qué diferencia existe entre `init`, `validate`, `plan`, `apply` y `destroy`, cómo Terraform conoce las dependencias, qué contiene el estado, por qué se excluye de Git y cómo se garantiza el aislamiento de `preprod` respecto de QA y PROD.
+
