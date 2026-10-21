@@ -237,7 +237,7 @@ function App() {
                   type="submit"
                   className="boton principal"
                 >
-                  Guardar reserva
+                  Confirmar reserva
                 </button>
               </div>
             </form>
