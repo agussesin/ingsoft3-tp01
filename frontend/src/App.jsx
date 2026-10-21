@@ -140,7 +140,7 @@ function App() {
     <div className="app">
       <header className="encabezado">
         <div>
-          <h1>Reservas UCC</h1>
+          <h1>Reservas UCC · Gestión de reservas</h1>
         </div>
 
         <nav>
