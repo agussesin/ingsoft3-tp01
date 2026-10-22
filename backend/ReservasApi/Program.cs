@@ -6,6 +6,18 @@ using ReservasApi.Services;
 
 var builder = WebApplication.CreateBuilder(args);
 
+var sentryDsn = builder.Configuration["SENTRY_DSN"];
+
+if (!string.IsNullOrWhiteSpace(sentryDsn))
+{
+    builder.WebHost.UseSentry(options =>
+    {
+        options.Dsn = sentryDsn;
+        options.TracesSampleRate = 0.1;
+        options.SendDefaultPii = false;
+    });
+}
+
 var connectionString = builder.Configuration
     .GetConnectionString("DefaultConnection")
     ?? throw new InvalidOperationException(
