@@ -974,3 +974,129 @@ Se verificó la creación de cinco recursos, la respuesta HTTP del backend, la c
 
 Para la defensa debo poder explicar qué es IaC, qué diferencia existe entre `init`, `validate`, `plan`, `apply` y `destroy`, cómo Terraform conoce las dependencias, qué contiene el estado, por qué se excluye de Git y cómo se garantiza el aislamiento de `preprod` respecto de QA y PROD.
 
+## Decisiones del TP9 — DevSecOps, observabilidad y feedback continuo
+
+### Objetivo y estrategia
+
+Se incorporaron controles de seguridad y observabilidad a la aplicación de reservas ya desarrollada y desplegada en QA y PROD.
+
+Se eligió integrar las herramientas con GitHub y Render, conservando la cadena de integración continua, pruebas y aprobación manual de producción. El objetivo es detectar problemas en las dependencias, el código, la disponibilidad y la ejecución real de la aplicación.
+
+Esta estrategia aplica el principio *shift-left*: incorporar verificaciones de seguridad durante el desarrollo y no esperar a una auditoría final.
+
+### Dependabot — Seguridad de dependencias
+
+Se configuró Dependabot para NuGet (backend), npm (frontend) y GitHub Actions, con el objetivo de detectar actualizaciones y vulnerabilidades conocidas en las dependencias del proyecto.
+
+Se integró la configuración mediante el PR #34. Las actualizaciones propuestas por Dependabot deben revisarse mediante Pull Requests y pasar los controles del pipeline antes de incorporarse a `main`.
+
+**PR de actualización mergeado:** PR #46, creado por Dependabot, que actualizó `Microsoft.NET.Test.Sdk` de `17.8.0` a `18.11.0` en `backend/ReservasApi.Tests/ReservasApi.Tests.csproj`. Se aprobó porque el cambio estaba limitado a una dependencia de ejecución de pruebas, sin modificar la lógica de negocio, y los controles aplicables al PR finalizaron correctamente. Se integró mediante Squash Merge en `main` (commit `4f49256`). Aunque la actualización superó los controles automatizados, esto no elimina todos los riesgos de compatibilidad.
+
+La confianza para integrar una actualización proviene de la revisión del cambio y de los controles automatizados de compilación, tests y coverage implementados en los TP4 y TP5. Sin embargo, un pipeline verde no garantiza la ausencia de vulnerabilidades ni de regresiones no cubiertas.
+
+Durante la revisión se observaron cinco alertas abiertas en Dependabot, incluidas vulnerabilidades relacionadas con Vitest y su dependencia transitiva `tinypool`. Se intentó actualizar las dependencias de pruebas del frontend, pero npm produjo el error `Cannot read properties of null (reading 'edgesOut')`. Se evitó forzar una actualización sin verificar su compatibilidad.
+
+Estas vulnerabilidades no se presentan como resueltas. Quedan pendientes de evaluación, actualización y nueva ejecución de las pruebas.
+
+### CodeQL — Análisis estático
+
+Se activó CodeQL mediante la configuración predeterminada de GitHub para analizar el código del repositorio.
+
+Durante la implementación se detectaron cuatro alertas de severidad media relacionadas con permisos de los workflows. Se corrigieron mediante el PR #49 y se verificó posteriormente que Code scanning mostrara cero alertas abiertas y cuatro cerradas.
+
+CodeQL analiza patrones potencialmente inseguros en el código y la configuración, mientras que las pruebas automatizadas verifican comportamientos definidos. Son controles complementarios: cero alertas abiertas no significa que el software esté libre de vulnerabilidades.
+
+### Protección de secretos
+
+La protección contra la publicación accidental de secretos constituye una tercera capa de seguridad, diferente de Dependabot y CodeQL.
+
+**Estado de push protection:** habilitada y verificada visualmente en GitHub Settings → Advanced Security, junto con Secret Protection. Push Protection bloquea los pushes que contienen patrones de secretos compatibles, reduciendo el riesgo de exposición accidental de credenciales.
+
+Las credenciales de Render, Neon y Sentry utilizadas como configuración sensible se administran mediante variables de entorno y secretos, evitando incorporarlas directamente al repositorio.
+
+El DSN público del frontend de Sentry no equivale a una clave administrativa: permite enviar telemetría, pero no consultar ni administrar los datos del proyecto.
+
+### UptimeRobot — Monitoreo externo de producción
+
+Se configuró UptimeRobot para consultar cada cinco minutos el endpoint:
+
+`https://reservas-api-prod-zulr.onrender.com/health`
+
+Se eligió un monitor externo porque puede detectar que el servicio no responde incluso cuando la propia aplicación no está disponible para registrar el incidente.
+
+Se provocó una caída controlada de producción y posteriormente se restauró el servicio. El historial del monitor registró los estados DOWN y UP.
+
+**Tiempo de aviso:** UptimeRobot confirmó el estado DOWN el 22/10/2026 a las 17:02:46 y envió el correo de alerta a las 17:02:48 (2 segundos después). El servicio se recuperó a las 17:12:55 y se envió el correo de recuperación a las 17:12:57. El incidente duró 10 minutos y 9 segundos. No se midió el tiempo exacto desde la suspensión manual del servicio hasta su detección.
+
+El intervalo de cinco minutos es la frecuencia de comprobación, no una garantía de que la alerta llegue exactamente cinco minutos después de producirse una caída.
+
+El endpoint `/health` permite comprobar disponibilidad básica, pero no garantiza que todas las operaciones de reservas funcionen ni que sus tiempos de respuesta sean adecuados.
+
+**Estado final del monitor:** Paused, verificado en UptimeRobot el 22/10/2026. Se pausó después de comprobar el incidente DOWN/UP y las notificaciones por correo, para evitar consultas periódicas que consuman la cuota gratuita de Render. El historial del incidente permanece disponible para la defensa.
+
+### Sentry — Errores, rendimiento y uso
+
+Se integró Sentry en el backend ASP.NET Core y en el frontend React mediante el PR #50.
+
+El backend utiliza la variable de entorno `SENTRY_DSN`, una tasa de muestreo de trazas del 10 % y `SendDefaultPii=false`, para limitar el volumen de telemetría y evitar el envío predeterminado de información personal identificable.
+
+El frontend utiliza `@sentry/react` y recibe su DSN durante la construcción de la aplicación.
+
+Se verificó la recepción de trazas reales del backend en Sentry, incluidas solicitudes HTTP y operaciones de Entity Framework Core contra la base de datos.
+
+El monitoreo externo permite saber si el servicio está disponible; Sentry aporta información sobre el comportamiento interno, los errores y la duración de las operaciones. Ambas herramientas se complementan.
+
+
+**Error capturado en Issues:** Se verificó un evento `System.InvalidOperationException` con el mensaje `TP9 - Excepcion controlada para verificar Sentry`, registrado en el proyecto `reservas-backend` con un evento y estado New. La prueba se ejecutó desde una aplicación temporal de consola .NET 8, utilizando el SDK de Sentry y el entorno `tp9-prueba-local`. El envío se confirmó en los logs y posteriormente en Sentry Issues. Esta prueba demuestra la recepción de excepciones, pero no constituye un error generado por el backend desplegado. Evidencia: `evidencias/tp9/tp9-sentry-error.png`.
+
+**Operación más utilizada y cantidad de solicitudes:** `GET /api/Reservas`, con un conteo estimado de 60 ejecuciones durante los últimos 14 días. Las otras operaciones observadas fueron `GET /api/Reservas/{id:int}` y `DELETE /api/Reservas/{id:int}`, con 10 ejecuciones estimadas cada una.
+
+**Operación más lenta y P95:** `GET /api/Reservas`, con un P95 de 3,22 segundos. Las otras operaciones registraron un P95 de 68,90 ms para `GET /api/Reservas/{id:int}` y 137,34 ms para `DELETE /api/Reservas/{id:int}`.
+
+El P95 representa el tiempo que aproximadamente el 95 % de las operaciones medidas no supera. Se compararon las transacciones HTTP agrupadas por `transaction` en Sentry Explore, filtrando el proyecto `reservas-backend` y un período de 14 días. Los resultados son estimaciones de Sentry basadas en 8 coincidencias de 26 spans, por lo que no representan necesariamente todas las solicitudes del sistema. Evidencia: `evidencias/tp9/tp9-sentry-metricas.png`.
+
+### Feedback continuo y tablero
+
+La observabilidad debe producir acciones concretas de mejora. A partir de la latencia observada se creó el Issue #53: [Investigar latencia de GET /api/Reservas detectada por Sentry](https://github.com/agussesin/ingsoft3-tp01/issues/53).
+
+El Issue está vinculado al GitHub Project `IngSoft3 - Mi App DevOps` del TP3, en estado `Todo`. Propone investigar los tiempos del backend, las consultas a PostgreSQL y posibles demoras de infraestructura, además de repetir las mediciones con una muestra mayor.
+
+La latencia observada es un hallazgo que requiere investigación; todavía no se confirmó su causa ni se implementó una optimización. Evidencia: `evidencias/tp9/tp9-feedback-project.png`.
+
+
+### Problemas encontrados y resolución
+
+Durante la configuración de Sentry, la API de QA no pudo desplegarse porque Render tenía configurada una etiqueta de imagen que no estaba disponible en GHCR.
+
+Se corrigió la referencia de imagen y se desplegó la versión `sha-a881785ee70187bdeccecb07151a750b41063085`. Los logs confirmaron el arranque de ASP.NET Core en el entorno Staging y el endpoint `/health` respondió correctamente.
+
+Esto demuestra que una configuración incorrecta del artefacto desplegado puede dejar un entorno sin servicio, aunque el código de la aplicación sea válido.
+
+También se detectaron vulnerabilidades pendientes en dependencias de desarrollo del frontend. La actualización automática no se forzó después del error de npm, porque primero debe comprobarse la compatibilidad con los tests y el pipeline.
+
+### Alcance y limitaciones
+
+Las herramientas incorporadas cubren problemas diferentes:
+
+- Dependabot identifica dependencias desactualizadas o con vulnerabilidades conocidas.
+- CodeQL analiza posibles problemas de seguridad en código y workflows.
+- Push protection busca impedir la publicación de secretos reconocibles.
+- UptimeRobot detecta fallas de disponibilidad desde el exterior.
+- Sentry permite investigar errores, duración y uso de operaciones instrumentadas.
+
+Ninguna herramienta, individualmente, garantiza la seguridad o disponibilidad completa del sistema.
+
+### Uso de asistencia de IA
+
+Se utilizó asistencia de IA para comprender los conceptos de DevSecOps y observabilidad, orientar la configuración de Dependabot, CodeQL, UptimeRobot y Sentry, interpretar errores de npm y Render, y preparar esta documentación.
+
+Los resultados se contrastaron con Pull Requests, checks de GitHub Actions, alertas de Security, historial de UptimeRobot, logs de Render, respuestas HTTP y trazas recibidas en Sentry.
+
+Las verificaciones que todavía no se realizaron se documentan como pendientes y no como resultados obtenidos.
+
+### Cierre y release
+
+La versión `v9.0.0` se publicará después de completar las verificaciones exigidas, integrar la documentación mediante Pull Request y confirmar el commit de cierre.
+
+El tag y la release deben identificar el estado real entregado del repositorio.
+
