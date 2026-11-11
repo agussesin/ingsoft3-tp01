@@ -58,7 +58,7 @@ jobs:
 
       - name: Guardar coverage del backend
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: backend-coverage
           path: |
@@ -117,7 +117,7 @@ jobs:
 
       - name: Guardar coverage del frontend
         if: always()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-coverage
           path: frontend/coverage/
@@ -212,7 +212,7 @@ jobs:
 
       - name: Publicar reporte de integración
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report-integracion
           path: frontend/playwright-report
@@ -247,7 +247,7 @@ jobs:
 
       - name: Publicar reporte E2E
         if: ${{ !cancelled() }}
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: playwright-report-e2e
           path: frontend/playwright-report
